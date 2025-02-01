@@ -20,7 +20,7 @@
         }
 
         .container {
-            max-width: 600px;
+            max-width: 700px;
             margin: 0 auto;
             background: #fff;
             border-radius: 5px;
@@ -32,6 +32,10 @@
             text-align: center;
             margin-bottom: 20px;
             font-weight: normal;
+        }
+
+        .description {
+            margin-bottom: 20px;
         }
 
         .form-group {
@@ -60,17 +64,6 @@
             outline: none;
         }
 
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            margin: 10px 0;
-        }
-
-        .checkbox-group input[type="checkbox"] {
-            margin-right: 10px;
-            transform: scale(1.2);
-        }
-
         .btn {
             display: inline-block;
             background: #007bff;
@@ -87,21 +80,36 @@
             background: #0056b3;
         }
 
-        .result-container {
+        hr {
+            margin: 20px 0;
+        }
+
+        .result-header {
             margin-top: 20px;
+            font-weight: bold;
+            text-decoration: underline;
+        }
+
+        .fee-line {
+            margin: 4px 0;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .result-container {
             padding: 15px;
             background: #f9f9f9;
             border: 1px solid #ececec;
             border-radius: 4px;
         }
 
-        .result-container p {
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
-
-        hr {
-            margin: 20px 0;
+        .footer-note {
+            margin-top: 20px;
+            font-style: italic;
         }
     </style>
 </head>
@@ -110,8 +118,8 @@
 
     <div class="container">
         <h1>Fee-Adjusted Profit Calculator</h1>
-        <span>This is just an approximation! Use the Solana price at the time of the trade and use the correct fee values when you did the trade.</span>
-        <span>Bullx has a min. fee of 0.001 sol. You can sidestep that by using nova. So the nova checkbox only affects the calculation for small values.</span>
+        <p class="description">Nova is still better cause it’s faster and that allows lower prio fee and bribe.</p>
+
         <div class="form-group">
             <label for="invested">Total Invested ($)</label>
             <input id="invested" type="number" step="any" placeholder="e.g. 10">
@@ -122,14 +130,9 @@
             <input id="sold" type="number" step="any" placeholder="e.g. 15">
         </div>
 
-        <div class="checkbox-group">
-            <input id="novaCheck" type="checkbox">
-            <label for="novaCheck" style="display: inline;">Use Nova</label>
-        </div>
-
         <div class="form-group">
             <label for="solanaPrice">Solana Price ($)</label>
-            <input id="solanaPrice" type="number" step="any" placeholder="e.g. 250">
+            <input id="solanaPrice" type="number" step="any" placeholder="e.g. 25">
         </div>
 
         <div class="form-group">
@@ -146,47 +149,61 @@
 
         <hr>
 
-        <div id="result" class="result-container"></div>
+        <div class="results-grid">
+            <div id="resultNoNova" class="result-container"></div>
+            <div id="resultNova" class="result-container"></div>
+        </div>
+
+        <p class="footer-note">Compare both results above. Typically, Nova is faster with potentially lower priority/bribe fees.</p>
     </div>
 
     <script>
+        // Computes the bullx fee depending on whether Nova is used
+        function bullxFee(amount, solanaPrice, withNova) {
+            // If Nova is used => 1% fee, no minimum
+            if (withNova) {
+                return 0.01 * amount;
+            }
+            // Otherwise, 1% or at least 0.001 SOL worth of USD
+            const feeInDollars = 0.01 * amount;
+            const minDollars = 0.001 * solanaPrice;
+            return (feeInDollars < minDollars) ? minDollars : feeInDollars;
+        }
+
+        // Main compute function
         function computeProfit() {
             // Read inputs
             const invested = parseFloat(document.getElementById("invested").value) || 0;
             const sold = parseFloat(document.getElementById("sold").value) || 0;
-            const novaChecked = document.getElementById("novaCheck").checked;
             const solanaPrice = parseFloat(document.getElementById("solanaPrice").value) || 0;
             const gasPriority = parseFloat(document.getElementById("gasPriority").value) || 0;
             const bribeFee = parseFloat(document.getElementById("bribeFee").value) || 0;
 
-            // Function to compute bullx fee (in dollars) for a given $ amount
-            function bullxFee(amount) {
-                if (novaChecked) {
-                    // If Nova is checked, just 1% of amount (no min)
-                    return 0.01 * amount;
-                } else {
-                    // Otherwise, 1% of amount, but at least 0.001 SOL worth of USD
-                    const feeInDollars = 0.01 * amount;
-                    const minDollars = 0.001 * solanaPrice;
-                    return (feeInDollars < minDollars) ? minDollars : feeInDollars;
-                }
-            }
+            // We'll compute the scenario WITHOUT Nova and WITH Nova
+            const resultsNoNova = calculateScenario(invested, sold, solanaPrice, gasPriority, bribeFee, false);
+            const resultsNova = calculateScenario(invested, sold, solanaPrice, gasPriority, bribeFee, true);
 
-            // Compute buy fees in $
-            const bullxBuy = bullxFee(invested);
+            // Render the results
+            displayResults('resultNoNova', resultsNoNova, 'Without Nova');
+            displayResults('resultNova', resultsNova, 'With Nova');
+        }
+
+        function calculateScenario(invested, sold, solanaPrice, gasPriority, bribeFee, withNova) {
+            // Buy fees
+            const bullxBuy = bullxFee(invested, solanaPrice, withNova);
             const pumpfunBuy = 0.01 * invested;
             const gasPrioBuy = gasPriority * solanaPrice;
             const bribeBuy = bribeFee * solanaPrice;
 
-            // Compute sell fees in $
-            const bullxSell = bullxFee(sold);
+            // Sell fees
+            const bullxSell = bullxFee(sold, solanaPrice, withNova);
             const pumpfunSell = 0.01 * sold;
             const gasPrioSell = gasPriority * solanaPrice;
             const bribeSell = bribeFee * solanaPrice;
 
             // Sum total fees
             const totalFees = bullxBuy + pumpfunBuy + gasPrioBuy + bribeBuy +
-                bullxSell + pumpfunSell + gasPrioSell + bribeSell;
+                              bullxSell + pumpfunSell + gasPrioSell + bribeSell;
 
             // Raw profit
             const rawProfit = sold - invested;
@@ -194,13 +211,40 @@
             // Fee-adjusted profit
             const feeAdjustedProfit = rawProfit - totalFees;
 
-            // Update result display
-            const resultDiv = document.getElementById("result");
-            resultDiv.innerHTML = `
-        <p><strong>Total Fees:</strong> $${totalFees.toFixed(2)}</p>
-        <p><strong>Profit (Before Fees):</strong> $${rawProfit.toFixed(2)}</p>
-        <p><strong>Fee-Adjusted Profit:</strong> $${feeAdjustedProfit.toFixed(2)}</p>
-      `;
+            return {
+                bullxBuy,
+                pumpfunBuy,
+                gasPrioBuy,
+                bribeBuy,
+                bullxSell,
+                pumpfunSell,
+                gasPrioSell,
+                bribeSell,
+                totalFees,
+                rawProfit,
+                feeAdjustedProfit
+            };
+        }
+
+        function displayResults(elementId, data, title) {
+            // Build the result HTML
+            const html = `
+                <div class="result-header">${title}</div>
+                <div class="fee-line">Bullx Buy Fee: $${data.bullxBuy.toFixed(4)}</div>
+                <div class="fee-line">Pumpfun Buy Fee: $${data.pumpfunBuy.toFixed(4)}</div>
+                <div class="fee-line">Gas Priority Buy: $${data.gasPrioBuy.toFixed(4)}</div>
+                <div class="fee-line">Bribe Buy: $${data.bribeBuy.toFixed(4)}</div>
+                <hr>
+                <div class="fee-line">Bullx Sell Fee: $${data.bullxSell.toFixed(4)}</div>
+                <div class="fee-line">Pumpfun Sell Fee: $${data.pumpfunSell.toFixed(4)}</div>
+                <div class="fee-line">Gas Priority Sell: $${data.gasPrioSell.toFixed(4)}</div>
+                <div class="fee-line">Bribe Sell: $${data.bribeSell.toFixed(4)}</div>
+                <hr>
+                <div class="fee-line"><strong>Total Fees:</strong> $${data.totalFees.toFixed(4)}</div>
+                <div class="fee-line"><strong>Profit (Before Fees):</strong> $${data.rawProfit.toFixed(4)}</div>
+                <div class="fee-line"><strong>Fee-Adjusted Profit:</strong> $${data.feeAdjustedProfit.toFixed(4)}</div>
+            `;
+            document.getElementById(elementId).innerHTML = html;
         }
     </script>
 </body>
